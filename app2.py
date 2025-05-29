@@ -1,3 +1,4 @@
+
 import streamlit as st
 import docx
 from docx.enum.text import WD_COLOR_INDEX
@@ -9,19 +10,15 @@ import pandas as pd
 import re
 from concurrent.futures import ThreadPoolExecutor
 
-# CONFIG
 DEEPSEEK_API_KEY = "sk-18a6c87deb544ee6891ec8a3a5d744d6"
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 
-# UI
 st.set_page_config(page_title="Startup Analyzer AI", layout="wide")
 st.title("🚀 Startup Analyzer (AI-Powered Report Generator)")
 
-# Uploads
-uploaded_template = st.file_uploader("📄 Upload the Word Template (yellow prompts) (.docx)", type=["docx"])
+uploaded_template = st.file_uploader("📄 Upload analysis template (.docx)", type=["docx"])
 uploaded_files = st.file_uploader("📎 Upload supporting files (.pdf, .docx, .xlsx, .txt)", accept_multiple_files=True)
 
-# Extract yellow-highlighted prompts
 def extract_yellow_prompts(doc_file):
     doc = docx.Document(doc_file)
     prompts = []
@@ -31,7 +28,6 @@ def extract_yellow_prompts(doc_file):
                 prompts.append(run.text.strip())
     return prompts
 
-# PDF extraction
 def extract_text_from_pdfs(pdf_paths):
     text = ""
     for file in pdf_paths:
@@ -43,7 +39,6 @@ def extract_text_from_pdfs(pdf_paths):
             continue
     return text
 
-# Excel extraction
 def extract_summary_from_excel(file):
     text = ""
     try:
@@ -56,7 +51,6 @@ def extract_summary_from_excel(file):
         text += f"[Excel error: {e}]"
     return text
 
-# Merge context
 def build_combined_context(files):
     text = ""
     for file in files:
@@ -74,26 +68,21 @@ def build_combined_context(files):
             text += extract_summary_from_excel(file)
         elif name.endswith(".txt"):
             text += file.read().decode(errors='ignore') + "\n"
-    return text[:10000] if text else "No context provided."
+    return text[:10000] if text else "Das Startup ist ein innovatives Projekt. Bitte analysiere es allgemein als Startup-Analyst."
 
-# Clean AI output (remove markdown)
 def clean_markdown(text):
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
     text = re.sub(r'#+\s*', '', text)
     text = re.sub(r'^\s*-\s*', '• ', text, flags=re.M)
     return text.strip()
 
-# Generate response from DeepSeek
 def deepseek_generate(prompt, context):
-    if context == "No context provided":
-        return prompt  # Don't fill if no data
-
     headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
     data = {
         "model": "deepseek-chat",
         "messages": [
-            {"role": "system", "content": "You are an AI analyst writing a professional, investor-oriented startup report. Respond clearly and concisely."},
-            {"role": "user", "content": f"{prompt}\n\nContext:\n{context}"}
+            {"role": "system", "content": "Du bist ein professioneller Startup-Analyst. Schreibe formelle und prägnante Antworten auf Deutsch in maximal 1000 Zeichen."},
+            {"role": "user", "content": f"{prompt}\n\nKontext:\n{context}"}
         ],
         "temperature": 0.7
     }
@@ -101,17 +90,13 @@ def deepseek_generate(prompt, context):
         res = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=60)
         res.raise_for_status()
         text = res.json()["choices"][0]["message"]["content"].strip()
-
-        # Fallback check
         fallback_phrases = ["tut mir leid", "nicht bereitgestellt", "nicht verfügbar", "leider"]
         if any(phrase in text.lower() for phrase in fallback_phrases):
             return prompt
+        return clean_markdown(text[:1000])
+    except:
+        return prompt
 
-        return clean_markdown(text[:1000])  # Limit to 1000 characters
-    except Exception as e:
-        return prompt  # On failure, keep original
-
-# Insert answers into the docx
 def fill_doc_with_answers(template_file, answers):
     doc = docx.Document(template_file)
     idx = 0
@@ -126,11 +111,10 @@ def fill_doc_with_answers(template_file, answers):
                 idx += 1
     return doc
 
-# Process button
-if uploaded_template and uploaded_files and st.button("🤖 Generate Report"):
-    with st.spinner("⏳ Extracting prompts and analyzing context..."):
+if uploaded_template and st.button("🤖 Generate Report"):
+    with st.spinner("🔍 Extracting prompts and analyzing context..."):
         prompts = extract_yellow_prompts(uploaded_template)
-        context = build_combined_context(uploaded_files)
+        context = build_combined_context(uploaded_files) if uploaded_files else "Das Startup ist ein innovatives Projekt. Bitte analysiere es allgemein als Startup-Analyst."
 
     st.info(f"🟡 Found {len(prompts)} prompts. Generating AI responses...")
 
